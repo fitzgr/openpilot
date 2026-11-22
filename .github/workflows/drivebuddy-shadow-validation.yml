@@ -1,0 +1,37 @@
+name: Drive Buddy shadow validation
+on:
+  push:
+    branches:
+      - test/drivebuddy-release-mici
+  pull_request:
+    paths:
+      - 'openpilot/drivebuddy_shadow/**'
+      - 'openpilot/system/manager/process_config.py'
+      - '.github/workflows/drivebuddy-shadow-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  protocol-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile bridge Python sources
+        run: python -m compileall -q openpilot/drivebuddy_shadow
+      - name: Run shadow protocol and HTTP tests
+        run: python -m unittest -v openpilot.drivebuddy_shadow.test_receiver
+      - name: Ensure no vehicle-control module imports in bridge
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          for path in Path('openpilot/drivebuddy_shadow').glob('*.py'):
+              text = path.read_text()
+              assert 'from openpilot.selfdrive.controls' not in text, path
+              assert 'import opendbc.can.packer' not in text, path
+          PY
