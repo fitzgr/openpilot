@@ -100,7 +100,7 @@ def manager_cleanup() -> None:
 def manager_thread() -> None:
   cloudlog.bind(daemon="manager")
   cloudlog.info("manager start")
-  cloudlog.info({"environ": os.environ})
+  cloudlog.info({"environ": {key: value for key, value in os.environ.items() if key != "DRIVEBUDDY_SHADOW_TOKEN"}})
 
   params = Params()
 
