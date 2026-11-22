@@ -10,6 +10,7 @@ import argparse
 import hmac
 import json
 import os
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -55,9 +56,36 @@ def validate(payload, now_ms=None):
     }
 
 
-def make_handler(token, log_path, blindspot_provider=None):
+NOTICE_PATH = Path("/tmp/drivebuddy-speed-notice.json")
+NOTICE_SECONDS = 3
+
+
+def write_notice(path, posted_speed):
+    with tempfile.NamedTemporaryFile(mode="w", dir=Path(path).parent, delete=False) as out:
+        temporary_path = Path(out.name)
+        try:
+            json.dump({"postedSpeedKph": posted_speed, "receivedAt": time.monotonic()}, out)
+            out.close()
+            temporary_path.replace(path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+
+
+def read_notice(path=NOTICE_PATH):
+    try:
+        notice = json.loads(Path(path).read_text(encoding="utf-8"))
+        posted_speed = notice["postedSpeedKph"]
+        received_at = notice["receivedAt"]
+        if type(posted_speed) is int and 20 <= posted_speed <= 130 and 0 <= time.monotonic() - received_at < NOTICE_SECONDS:
+            return posted_speed
+    except (OSError, ValueError, TypeError, KeyError):
+        pass
+    return None
+
+
+def make_handler(token, log_path, blindspot_provider=None, notice_path=None):
     lock = threading.Lock()
-    last_message = {"record": None}
+    last_message = {"record": None, "notice_timestamp": -1}
 
     class Handler(BaseHTTPRequestHandler):
         def authorized(self):
@@ -135,11 +163,14 @@ def make_handler(token, log_path, blindspot_provider=None):
                 with lock:
                     with Path(log_path).open("a", encoding="utf-8") as out:
                         out.write(json.dumps(record, separators=(",", ":")) + "\n")
+                    if notice_path is not None and payload["timestampMs"] > last_message["notice_timestamp"]:
+                        write_notice(notice_path, result["postedSpeedKph"])
+                        last_message["notice_timestamp"] = payload["timestampMs"]
                     last_message["record"] = record
             except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as ex:
                 return self.respond(400, {"error": str(ex), "appliedToVehicle": False})
             except OSError:
-                return self.respond(500, {"error": "unable to write advisory log", "appliedToVehicle": False})
+                return self.respond(500, {"error": "unable to record advisory", "appliedToVehicle": False})
             print(json.dumps(record, separators=(",", ":")), flush=True)
             return self.respond(200, result)
 

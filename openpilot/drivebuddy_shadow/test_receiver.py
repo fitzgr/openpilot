@@ -6,10 +6,11 @@ import time
 import unittest
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from openpilot.drivebuddy_shadow.receiver import make_handler, validate
+from openpilot.drivebuddy_shadow.receiver import make_handler, read_notice, validate
 
 
 class ValidationTests(unittest.TestCase):
@@ -78,7 +79,9 @@ class HTTPReceiverTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.log_path = str(Path(self.temp.name) / "shadow.jsonl")
         self.token = "test-token-at-least-16-chars"
-        self.http = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(self.token, self.log_path))
+        self.notice_path = Path(self.temp.name) / "notice.json"
+        handler = make_handler(self.token, self.log_path, notice_path=self.notice_path)
+        self.http = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         self.thread = threading.Thread(target=self.http.serve_forever, daemon=True)
         self.thread.start()
         self.endpoint = f"http://127.0.0.1:{self.http.server_address[1]}"
@@ -116,6 +119,18 @@ class HTTPReceiverTests(unittest.TestCase):
         self.assertFalse(status["appliedToVehicle"])
         self.assertEqual(len(Path(self.log_path).read_text().splitlines()), 1)
 
+    def test_notice_expires_and_ignores_older_advisories(self):
+        for offset, speed, source in ((0, 60, "manual_test"), (2, 80, "collected"), (1, 40, "collected")):
+            payload = {**self.payload, "timestampMs": self.payload["timestampMs"] + offset,
+                       "postedSpeedKph": speed, "targetSpeedKph": speed + 8, "source": source}
+            request = Request(self.endpoint + "/v1/advisory", data=json.dumps(payload).encode("utf-8"),
+                              headers={"X-DriveBuddy-Token": self.token}, method="POST")
+            with urlopen(request, timeout=3) as response:
+                self.assertEqual(response.status, 200)
+        self.assertEqual(read_notice(self.notice_path), 80)
+        with patch("openpilot.drivebuddy_shadow.receiver.time.monotonic", return_value=time.monotonic() + 3):
+            self.assertIsNone(read_notice(self.notice_path))
+
     def test_reject_missing_token(self):
         request = Request(self.endpoint + "/v1/advisory",
                           data=json.dumps(self.payload).encode("utf-8"),
@@ -124,6 +139,7 @@ class HTTPReceiverTests(unittest.TestCase):
             urlopen(request, timeout=3)
         self.assertEqual(error.exception.code, 401)
         self.assertFalse(Path(self.log_path).exists())
+        self.assertFalse(self.notice_path.exists())
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import pyray as rl
 from openpilot.cereal import log
@@ -12,7 +14,8 @@ from openpilot.selfdrive.ui.mici.onroad.model_renderer import ModelRenderer
 from openpilot.selfdrive.ui.mici.onroad.confidence_ball import ConfidenceBall
 from openpilot.selfdrive.ui.mici.onroad.cameraview import CameraView
 from openpilot.system.ui.lib.application import FontWeight, gui_app, MousePos, MouseEvent, TextAlignment, TextAlignmentVertical
-from openpilot.system.ui.widgets.label import UnifiedLabel
+from openpilot.system.ui.widgets.label import UnifiedLabel, gui_label
+from openpilot.drivebuddy_shadow.receiver import read_notice
 from openpilot.system.ui.widgets import Widget
 from openpilot.common.filter_simple import BounceFilter, FirstOrderFilter
 from openpilot.common.transformations.camera import DEVICE_CAMERAS, DeviceCameraConfig, view_frame_from_device_frame
@@ -164,6 +167,8 @@ class AugmentedRoadView(CameraView):
     self._cached_matrix: np.ndarray | None = None
     self._content_rect = rl.Rectangle()
     self._last_click_time = 0.0
+    self._next_speed_notice_check = 0.0
+    self._speed_notice = None
 
     # Bookmark icon with swipe gesture
     self._bookmark_icon = BookmarkIcon(bookmark_callback)
@@ -253,6 +258,8 @@ class AugmentedRoadView(CameraView):
     self._alert_renderer.render(self._content_rect)
     self._hud_renderer.render(self._content_rect)
 
+    self._draw_speed_notice(self._content_rect, alert_to_render is None)
+
     # Draw fake rounded border
     rl.draw_rectangle_rounded_lines_ex(self._content_rect, 0.2 * 1.02, 10, 50, rl.BLACK)
 
@@ -264,6 +271,16 @@ class AugmentedRoadView(CameraView):
     self._confidence_ball.render(self.rect)
 
     self._bookmark_icon.render(self.rect)
+
+  def _draw_speed_notice(self, rect: rl.Rectangle, visible: bool):
+    now = time.monotonic()
+    if now >= self._next_speed_notice_check:
+      self._speed_notice = read_notice()
+      self._next_speed_notice_check = now + 0.1
+    if visible and self._speed_notice is not None:
+      notice = rl.Rectangle(rect.x + (rect.width - 300) / 2, rect.y + 18, 300, 52)
+      rl.draw_rectangle_rounded(notice, 0.35, 12, rl.Color(0, 0, 0, 225))
+      gui_label(notice, f"Drive Buddy  {self._speed_notice} km/h", font_size=32, alignment=TextAlignment.CENTER)
 
   def _switch_stream_if_needed(self, sm):
     if sm['selfdriveState'].experimentalMode and WIDE_CAM in self.available_streams:
