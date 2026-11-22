@@ -77,6 +77,9 @@ procs = [
   NativeProcess("encoderd", "openpilot/system/loggerd", ["./encoderd"], only_onroad),
   NativeProcess("stream_encoderd", "openpilot/system/loggerd", ["./encoderd", "--stream"], or_(livestream, notcar)),
   PythonProcess("logmessaged", "openpilot.system.logmessaged", always_run),
+  # Experimental phone bridge: advisory and blind-spot telemetry only. OFF by default.
+  PythonProcess("drivebuddy_shadow", "openpilot.drivebuddy_shadow.bridge", always_run,
+                enabled=os.getenv("DRIVEBUDDY_SHADOW_ENABLED") == "1"),
 
   NativeProcess("camerad", "openpilot/system/camerad", ["./camerad"], or_(driverview, livestream), enabled=not WEBCAM),
   PythonProcess("webcamerad", "openpilot.system.camerad.webcam.camerad", driverview, enabled=WEBCAM),
