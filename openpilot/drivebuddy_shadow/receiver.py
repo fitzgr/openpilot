@@ -172,7 +172,7 @@ def main():
         parser.error("DRIVEBUDDY_SHADOW_TOKEN must be >=16 characters")
     reader = None
     if args.comma_carstate:
-        from comma_carstate_reader import CommaCarStateReader
+        from openpilot.drivebuddy_shadow.comma_carstate_reader import CommaCarStateReader
         reader = CommaCarStateReader()
         reader.start()
     server = ThreadingHTTPServer(
