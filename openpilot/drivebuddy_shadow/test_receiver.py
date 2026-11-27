@@ -10,7 +10,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from openpilot.drivebuddy_shadow.receiver import make_handler, read_notice, validate
+from openpilot.drivebuddy_shadow.receiver import make_handler, read_notice, read_notice_details, validate
 
 
 class ValidationTests(unittest.TestCase):
@@ -130,6 +130,32 @@ class HTTPReceiverTests(unittest.TestCase):
         self.assertEqual(read_notice(self.notice_path), 80)
         with patch("openpilot.drivebuddy_shadow.receiver.time.monotonic", return_value=time.monotonic() + 3):
             self.assertIsNone(read_notice(self.notice_path))
+
+    def test_parked_speed_sequence_preserves_test_label_and_expires(self):
+        for index, speed in enumerate((60, 80, 50)):
+            payload = {**self.payload, "timestampMs": self.payload["timestampMs"] + index,
+                       "postedSpeedKph": speed, "targetSpeedKph": speed + 8}
+            request = Request(self.endpoint + "/v1/advisory", data=json.dumps(payload).encode("utf-8"),
+                              headers={"X-DriveBuddy-Token": self.token}, method="POST")
+            with urlopen(request, timeout=3) as response:
+                ack = json.load(response)
+            self.assertIs(ack["accepted"], True)
+            self.assertIs(ack["appliedToVehicle"], False)
+            self.assertEqual(ack["targetSpeedKph"], speed + 8)
+            self.assertEqual(read_notice_details(self.notice_path),
+                             {"postedSpeedKph": speed, "source": "manual_test"})
+        with patch("openpilot.drivebuddy_shadow.receiver.time.monotonic", return_value=time.monotonic() + 4):
+            self.assertIsNone(read_notice_details(self.notice_path))
+
+    def test_wrong_token_cannot_replace_notice(self):
+        request = Request(self.endpoint + "/v1/advisory",
+                          data=json.dumps(self.payload).encode("utf-8"),
+                          headers={"X-DriveBuddy-Token": "incorrect-test-token"}, method="POST")
+        with self.assertRaises(HTTPError) as error:
+            urlopen(request, timeout=3)
+        self.assertEqual(error.exception.code, 401)
+        self.assertFalse(self.notice_path.exists())
+        self.assertFalse(Path(self.log_path).exists())
 
     def test_reject_missing_token(self):
         request = Request(self.endpoint + "/v1/advisory",
