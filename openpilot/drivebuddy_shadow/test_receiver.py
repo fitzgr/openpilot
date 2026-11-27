@@ -10,7 +10,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from openpilot.drivebuddy_shadow.receiver import make_handler, read_notice, read_notice_details, validate
+from openpilot.drivebuddy_shadow.receiver import make_handler, parked_notice_layout, read_notice, read_notice_details, validate
 
 
 class ValidationTests(unittest.TestCase):
@@ -72,6 +72,28 @@ class ValidationTests(unittest.TestCase):
     def test_reject_missing_drive_id(self):
         with self.assertRaises(ValueError):
             validate({**self.payload, "driveId": ""}, self.now)
+
+
+class ParkedLayoutTests(unittest.TestCase):
+    def test_mici_native_screen_preserves_footer(self):
+        notice = {"source": "manual_test", "postedSpeedKph": 60}
+        x, y, width, height = parked_notice_layout(536, 240, started=False, alert_count=0, notice=notice)
+        self.assertGreaterEqual(x, 8)
+        self.assertLessEqual(x + width, 528)
+        self.assertGreaterEqual(y, 8)
+        self.assertLessEqual(y + height, 240 - 52)
+        self.assertEqual(width, 440)
+
+    def test_panel_hidden_when_started_or_alerts_or_invalid_notice(self):
+        notice = {"source": "manual_test", "postedSpeedKph": 80}
+        for started, alerts, candidate in (
+            (True, 0, notice), (False, 1, notice), (False, None, notice),
+            (False, 0, None), (False, 0, {"source": "collected", "postedSpeedKph": 50}),
+        ):
+            with self.subTest(started=started, alerts=alerts, candidate=candidate):
+                self.assertIsNone(parked_notice_layout(536, 240, started=started,
+                                                       alert_count=alerts, notice=candidate))
+        self.assertIsNone(parked_notice_layout(280, 240, started=False, alert_count=0, notice=notice))
 
 
 class HTTPReceiverTests(unittest.TestCase):
