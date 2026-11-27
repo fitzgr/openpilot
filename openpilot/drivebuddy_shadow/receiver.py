@@ -85,6 +85,19 @@ def read_notice_details(path=NOTICE_PATH):
     return None
 
 
+def parked_notice_layout(width, height, *, started, alert_count, notice):
+    """Reserve the home branding area only, never the footer or native alerts."""
+    if started is not False or alert_count != 0 or not notice or notice.get("source") != "manual_test":
+        return None
+    panel_width = min(440, width - 16)
+    panel_height = 112
+    available_height = height - 48 - 16
+    if panel_width < 300 or available_height < panel_height:
+        return None
+    return ((width - panel_width) / 2, 8 + (available_height - panel_height) / 2,
+            panel_width, panel_height)
+
+
 def read_notice(path=NOTICE_PATH):
     notice = read_notice_details(path)
     return notice["postedSpeedKph"] if notice is not None else None
