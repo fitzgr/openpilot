@@ -14,6 +14,7 @@ from openpilot.system.ui.widgets.label import UnifiedLabel, gui_label
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, TextAlignment, TextAlignmentVertical
 from openpilot.selfdrive.ui.ui_state import ui_state, ChestnutState
 from openpilot.common.version import RELEASE_BRANCHES
+from openpilot.drivebuddy_shadow.receiver import FIXED_OFFSET_KPH, parked_notice_layout, read_notice_details
 
 HEAD_BUTTON_FONT_SIZE = 40
 HOME_PADDING = 8
@@ -217,33 +218,51 @@ class MiciHomeLayout(Widget):
     return version, branch, commit[:7], date_str
 
   def _render(self, _):
-    # TODO: why is there extra space here to get it to be flush?
-    text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y - 16)
-    self._openpilot_label.set_position(text_pos.x, text_pos.y)
-    self._openpilot_label.render()
+    # Only replace branding/version text, not the native status or warning area.
+    alert_count = self._alert_count_callback() if self._alert_count_callback else None
+    notice = read_notice_details() if not ui_state.started and alert_count == 0 else None
+    layout = parked_notice_layout(self.rect.width, self.rect.height,
+                                  started=bool(ui_state.started), alert_count=alert_count, notice=notice)
+    if layout is not None:
+      x, y, width, height = layout
+      panel = rl.Rectangle(self.rect.x + x, self.rect.y + y, width, height)
+      posted = notice["postedSpeedKph"]
+      rl.draw_rectangle_rounded(panel, 0.2, 12, rl.Color(20, 20, 20, 255))
+      gui_label(rl.Rectangle(panel.x, panel.y, width, 32), "DRIVE BUDDY TEST", font_size=24,
+                alignment=TextAlignment.CENTER, alignment_vertical=TextAlignmentVertical.MIDDLE)
+      gui_label(rl.Rectangle(panel.x, panel.y + 32, width, 46),
+                f"Posted {posted} | Test target {posted + FIXED_OFFSET_KPH} km/h", font_size=24,
+                alignment=TextAlignment.CENTER, alignment_vertical=TextAlignmentVertical.MIDDLE)
+      gui_label(rl.Rectangle(panel.x, panel.y + 78, width, 34), "NOT APPLIED TO VEHICLE", font_size=20,
+                alignment=TextAlignment.CENTER, alignment_vertical=TextAlignmentVertical.MIDDLE)
+    else:
+      # TODO: why is there extra space here to get it to be flush?
+      text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y - 16)
+      self._openpilot_label.set_position(text_pos.x, text_pos.y)
+      self._openpilot_label.render()
 
-    if self._version_text is not None:
-      # release branch
-      release_branch = self._version_text[1] in RELEASE_BRANCHES
-      version_pos = rl.Rectangle(text_pos.x, text_pos.y + self._openpilot_label.font_size + 16, 100, 44)
-      self._version_label.set_text(self._version_text[0])
-      self._version_label.set_position(version_pos.x, version_pos.y)
-      self._version_label.render()
+      if self._version_text is not None:
+        # release branch
+        release_branch = self._version_text[1] in RELEASE_BRANCHES
+        version_pos = rl.Rectangle(text_pos.x, text_pos.y + self._openpilot_label.font_size + 16, 100, 44)
+        self._version_label.set_text(self._version_text[0])
+        self._version_label.set_position(version_pos.x, version_pos.y)
+        self._version_label.render()
 
-      self._date_label.set_text(" " + self._version_text[3])
-      self._date_label.set_position(version_pos.x + self._version_label.text_width + 10, version_pos.y)
-      self._date_label.render()
+        self._date_label.set_text(" " + self._version_text[3])
+        self._date_label.set_position(version_pos.x + self._version_label.text_width + 10, version_pos.y)
+        self._date_label.render()
 
-      self._branch_label.set_max_width(gui_app.width - self._version_label.text_width - self._date_label.text_width - 32)
-      self._branch_label.set_text(" " + ("release" if release_branch else self._version_text[1]))
-      self._branch_label.set_position(version_pos.x + self._version_label.text_width + self._date_label.text_width + 20, version_pos.y)
-      self._branch_label.render()
+        self._branch_label.set_max_width(gui_app.width - self._version_label.text_width - self._date_label.text_width - 32)
+        self._branch_label.set_text(" " + ("release" if release_branch else self._version_text[1]))
+        self._branch_label.set_position(version_pos.x + self._version_label.text_width + self._date_label.text_width + 20, version_pos.y)
+        self._branch_label.render()
 
-      if not release_branch:
-        # 2nd line
-        self._version_commit_label.set_text(self._version_text[2])
-        self._version_commit_label.set_position(version_pos.x, version_pos.y + self._date_label.font_size + 7)
-        self._version_commit_label.render()
+        if not release_branch:
+          # 2nd line
+          self._version_commit_label.set_text(self._version_text[2])
+          self._version_commit_label.set_position(version_pos.x, version_pos.y + self._date_label.font_size + 7)
+          self._version_commit_label.render()
 
     # ***** Center-aligned bottom section icons *****
     usb_connected = ui_state.usb_connected

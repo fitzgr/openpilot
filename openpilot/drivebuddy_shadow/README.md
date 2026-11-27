@@ -79,3 +79,38 @@ readings as missing data.
 3. If the UI is unusable, use [comma's factory flashing
    procedure](https://comma.ai/support/flash-your-comma), then reinstall stock
    openpilot. Factory flashing erases on-device software and data.
+
+## Persistent bench-only setup (candidate)
+
+The launch environment can load an existing local token from
+`/data/drivebuddy-test/token` (mode 0600) when the explicit
+`/data/drivebuddy-test/enable` marker exists. The token is never committed.
+Keep the marker absent outside an approved bench session. The receiver uses
+unencrypted HTTP on all IPv4 interfaces; use an isolated, trusted network.
+A software update may overwrite a locally edited startup script, so this
+candidate moves the tested opt-in hook into source control. Do not install
+this candidate for regular driving.
+
+### Hardware session record — 2026-11-27
+
+Android-to-comma authenticated manual advisory and comma-to-Android read-only
+telemetry were verified by user-observed screenshots on `test/dbsp` at
+`6c8e4f5`. A locally added startup hook successfully started the receiver
+after reboot. The user observed ignition-off unavailable readings, recovery
+after ignition-on, unavailable readings during Wi-Fi loss, and recovery
+after Wi-Fi returned. Missing and incorrect tokens returned HTTP 401 on the
+blindspot endpoint; unauthenticated advisory POST returned HTTP 401.
+The notification data file was written, but actual screen rendering and
+physical left/right object detection were not validated. The OBD-II
+connection remained attached during the vehicle telemetry tests, so they
+were not fully isolated bench tests. These results do not establish safe
+on-road operation.
+
+The user removed the opt-in marker and rebooted, then verified no TCP
+listener on port 8765. Preserve the disabled state before updating. The
+candidate source-controlled hook, upgrade persistence, automatic IP
+discovery, and physical sensor/display validation remain unverified.
+
+Before returning the unit to driving service, remove the opt-in marker,
+reboot, confirm port 8765 is closed, and restore the known-good official
+openpilot release. A missing blindspot signal is never evidence of a clear lane.
