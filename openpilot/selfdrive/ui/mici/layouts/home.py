@@ -14,6 +14,7 @@ from openpilot.system.ui.widgets.label import UnifiedLabel, gui_label
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos, TextAlignment, TextAlignmentVertical
 from openpilot.selfdrive.ui.ui_state import ui_state, ChestnutState
 from openpilot.common.version import RELEASE_BRANCHES
+from openpilot.drivebuddy_shadow.receiver import read_notice_details
 
 HEAD_BUTTON_FONT_SIZE = 40
 HOME_PADDING = 8
@@ -267,3 +268,21 @@ class MiciHomeLayout(Widget):
     self._alerts_pill.set_position(self.rect.x + self.rect.width - self._alerts_pill.rect.width - HOME_PADDING,
                                    self.rect.y + self.rect.height - self._alerts_pill.rect.height)
     self._alerts_pill.render()
+
+    # Parked diagnostic display only; never replace a native warning or control.
+    notice = read_notice_details()
+    has_alerts = self._alert_count_callback and self._alert_count_callback() > 0
+    if not has_alerts and notice is not None and notice["source"] == "manual_test":
+      posted = notice["postedSpeedKph"]
+      width = min(440, self.rect.width - 2 * HOME_PADDING)
+      height = 92
+      if width >= 300 and self.rect.height >= 320:
+        panel = rl.Rectangle(self.rect.x + (self.rect.width - width) / 2,
+                             self.rect.y + self.rect.height - 48 - height - 12, width, height)
+        rl.draw_rectangle_rounded(panel, 0.2, 12, rl.Color(20, 20, 20, 255))
+        gui_label(rl.Rectangle(panel.x, panel.y, width, 30), "DRIVE BUDDY TEST", font_size=24,
+                  alignment=TextAlignment.CENTER)
+        gui_label(rl.Rectangle(panel.x, panel.y + 30, width, 34), f"Posted {posted} | Suggested {posted + 8} km/h",
+                  font_size=25, alignment=TextAlignment.CENTER)
+        gui_label(rl.Rectangle(panel.x, panel.y + 64, width, 26), "NOT APPLIED TO VEHICLE", font_size=20,
+                  alignment=TextAlignment.CENTER)
