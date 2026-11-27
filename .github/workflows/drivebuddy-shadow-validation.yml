@@ -6,6 +6,8 @@ on:
   pull_request:
     paths:
       - 'openpilot/drivebuddy_shadow/**'
+      - 'openpilot/selfdrive/ui/mici/layouts/home.py'
+      - 'launch_env.sh'
       - 'openpilot/system/manager/process_config.py'
       - 'openpilot/system/manager/manager.py'
       - '.github/workflows/drivebuddy-shadow-validation.yml'
@@ -24,7 +26,10 @@ jobs:
         with:
           python-version: '3.12'
       - name: Compile bridge Python sources
-        run: python -m compileall -q openpilot/drivebuddy_shadow
+        run: |
+          python -m compileall -q openpilot/drivebuddy_shadow
+          python -m py_compile openpilot/selfdrive/ui/mici/layouts/home.py
+          bash -n launch_env.sh
       - name: Run shadow protocol and HTTP tests
         run: python -m unittest -v openpilot.drivebuddy_shadow.test_receiver
       - name: Ensure no vehicle-control module imports in bridge
