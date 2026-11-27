@@ -60,27 +60,34 @@ NOTICE_PATH = Path("/tmp/drivebuddy-speed-notice.json")
 NOTICE_SECONDS = 3
 
 
-def write_notice(path, posted_speed):
+def write_notice(path, posted_speed, source="collected"):
     with tempfile.NamedTemporaryFile(mode="w", dir=Path(path).parent, delete=False) as out:
         temporary_path = Path(out.name)
         try:
-            json.dump({"postedSpeedKph": posted_speed, "receivedAt": time.monotonic()}, out)
+            json.dump({"postedSpeedKph": posted_speed, "source": source, "receivedAt": time.monotonic()}, out)
             out.close()
             temporary_path.replace(path)
         finally:
             temporary_path.unlink(missing_ok=True)
 
 
-def read_notice(path=NOTICE_PATH):
+def read_notice_details(path=NOTICE_PATH):
     try:
         notice = json.loads(Path(path).read_text(encoding="utf-8"))
         posted_speed = notice["postedSpeedKph"]
         received_at = notice["receivedAt"]
         if type(posted_speed) is int and 20 <= posted_speed <= 130 and 0 <= time.monotonic() - received_at < NOTICE_SECONDS:
-            return posted_speed
+            source = notice.get("source", "collected")
+            if source in ("collected", "manual_test"):
+                return {"postedSpeedKph": posted_speed, "source": source}
     except (OSError, ValueError, TypeError, KeyError):
         pass
     return None
+
+
+def read_notice(path=NOTICE_PATH):
+    notice = read_notice_details(path)
+    return notice["postedSpeedKph"] if notice is not None else None
 
 
 def make_handler(token, log_path, blindspot_provider=None, notice_path=None):
@@ -164,7 +171,7 @@ def make_handler(token, log_path, blindspot_provider=None, notice_path=None):
                     with Path(log_path).open("a", encoding="utf-8") as out:
                         out.write(json.dumps(record, separators=(",", ":")) + "\n")
                     if notice_path is not None and payload["timestampMs"] > last_message["notice_timestamp"]:
-                        write_notice(notice_path, result["postedSpeedKph"])
+                        write_notice(notice_path, result["postedSpeedKph"], payload["source"])
                         last_message["notice_timestamp"] = payload["timestampMs"]
                     last_message["record"] = record
             except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as ex:
